@@ -1,5 +1,15 @@
-let currentThreadId = localStorage.getItem("travel_thread_id") || null;
+// Each "Generate Draft" starts a new LangGraph thread. The thread pauses at
+// the human approval step and is resumed through /api/travel/approve.
+let currentThreadId = null;
 let latestAnswerMarkdown = "";
+
+const AGENT_LABELS = {
+    flight_agent: "✈️ Flight",
+    hotel_agent: "🏨 Hotel",
+    weather_agent: "🌦️ Weather",
+    budget_agent: "💰 Budget",
+    itinerary_agent: "🗺️ Itinerary"
+};
 
 function setPrompt(text) {
     document.getElementById("userInput").value = text;
@@ -21,6 +31,27 @@ function setLoading(isLoading) {
     }
 }
 
+function setApprovalLoading(isLoading, approved) {
+    const approveBtn = document.getElementById("approveBtn");
+    const reviseBtn = document.getElementById("reviseBtn");
+
+    approveBtn.disabled = isLoading;
+    reviseBtn.disabled = isLoading;
+
+    if (isLoading) {
+        const activeBtn = approved ? approveBtn : reviseBtn;
+        activeBtn.dataset.label = activeBtn.textContent;
+        activeBtn.textContent = approved ? "Generating final plan..." : "Revising plan...";
+    } else {
+        [approveBtn, reviseBtn].forEach((btn) => {
+            if (btn.dataset.label) {
+                btn.textContent = btn.dataset.label;
+                delete btn.dataset.label;
+            }
+        });
+    }
+}
+
 function showError(message) {
     const errorBox = document.getElementById("errorBox");
 
@@ -35,12 +66,13 @@ function hideError() {
     errorBox.textContent = "";
 }
 
-function showResult(answer, threadId) {
+function showResult(answer, threadId, title) {
     latestAnswerMarkdown = answer;
 
     const resultSection = document.getElementById("resultSection");
     const resultBox = document.getElementById("resultBox");
     const threadInfo = document.getElementById("threadInfo");
+    const resultTitle = document.getElementById("resultTitle");
 
     if (typeof marked !== "undefined") {
         resultBox.innerHTML = marked.parse(answer);
@@ -48,6 +80,7 @@ function showResult(answer, threadId) {
         resultBox.innerText = answer;
     }
 
+    resultTitle.textContent = title;
     threadInfo.textContent = `Thread ID: ${threadId}`;
 
     resultSection.classList.remove("hidden");
@@ -56,6 +89,66 @@ function showResult(answer, threadId) {
         behavior: "smooth",
         block: "start"
     });
+}
+
+function renderWorkflow(data) {
+    const workflowSection = document.getElementById("workflowSection");
+    const guardrailBadge = document.getElementById("guardrailBadge");
+    const supervisorReasoning = document.getElementById("supervisorReasoning");
+    const agentChips = document.getElementById("agentChips");
+
+    const allowed = data.guardrail_allowed !== false;
+
+    guardrailBadge.textContent = allowed ? "Guardrail passed" : "Blocked by guardrail";
+    guardrailBadge.classList.toggle("blocked", !allowed);
+
+    supervisorReasoning.textContent = allowed
+        ? (data.supervisor_reasoning || "")
+        : (data.guardrail_reason || data.answer || "");
+
+    agentChips.replaceChildren();
+    (data.selected_agents || []).forEach((agent) => {
+        const chip = document.createElement("span");
+        chip.className = "agent-chip";
+        chip.textContent = AGENT_LABELS[agent] || agent;
+        agentChips.appendChild(chip);
+    });
+
+    workflowSection.classList.remove("hidden");
+}
+
+function showApproval(approvalRequest) {
+    const approvalSection = document.getElementById("approvalSection");
+    const approvalText = document.getElementById("approvalRequest");
+
+    if (approvalRequest) {
+        approvalText.textContent = approvalRequest;
+    }
+
+    document.getElementById("approvalFeedback").value = "";
+    approvalSection.classList.remove("hidden");
+}
+
+function hideApproval() {
+    document.getElementById("approvalSection").classList.add("hidden");
+}
+
+async function postJson(url, payload) {
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+        throw new Error(data.error || "Something went wrong.");
+    }
+
+    return data;
 }
 
 async function sendMessage() {
@@ -70,34 +163,71 @@ async function sendMessage() {
     }
 
     setLoading(true);
+    hideApproval();
 
     try {
-        const response = await fetch("/api/travel", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                message: message,
-                thread_id: currentThreadId
-            })
+        // A new trip always starts a new thread. Reusing a thread that is
+        // paused at the approval step would mix two trips together.
+        const data = await postJson("/api/travel", {
+            message: message,
+            thread_id: null
         });
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || "Something went wrong.");
-        }
-
         currentThreadId = data.thread_id;
-        localStorage.setItem("travel_thread_id", currentThreadId);
+        renderWorkflow(data);
 
-        showResult(data.answer, data.thread_id);
+        if (data.requires_approval) {
+            showResult(data.answer, data.thread_id, "Draft Itinerary (awaiting your review)");
+            showApproval(data.approval_request);
+        } else {
+            const title = data.guardrail_allowed === false
+                ? "Request not supported"
+                : "Your AI Travel Plan";
+            showResult(data.answer, data.thread_id, title);
+        }
 
     } catch (error) {
         showError(error.message);
     } finally {
         setLoading(false);
+    }
+}
+
+async function submitApproval(approved) {
+    hideError();
+
+    if (!currentThreadId) {
+        showError("There is no draft to review. Generate a draft first.");
+        return;
+    }
+
+    const feedback = document.getElementById("approvalFeedback").value.trim();
+
+    if (!approved && !feedback) {
+        showError("Please add feedback describing what to change before requesting a revision.");
+        return;
+    }
+
+    setApprovalLoading(true, approved);
+
+    try {
+        const data = await postJson("/api/travel/approve", {
+            thread_id: currentThreadId,
+            approved: approved,
+            feedback: feedback
+        });
+
+        hideApproval();
+        showResult(
+            data.answer,
+            data.thread_id,
+            approved ? "Your AI Travel Plan" : "Your Revised Travel Plan"
+        );
+
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        setApprovalLoading(false, approved);
     }
 }
 
