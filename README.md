@@ -27,8 +27,13 @@ You get live flights, hotel picks and a day-by-day itinerary.*
 
 TripMate AI turns a natural-language trip request into a structured plan by passing it through a **LangGraph pipeline of four specialised agents**. They share one typed state, and every conversation is stored in **PostgreSQL**, so you can come back to it later.
 
-> 🔁 **This is v1.** Its tools are written directly in Python.
-> [`MulitAgent-With-MCPs`](https://github.com/nishantrv/MulitAgent-With-MCPs) is **v2**: the same planner rebuilt on the **Model Context Protocol**, with a fifth weather agent and a custom MCP server.
+> 🔀 **One repo, three versions.** Each version of TripMate AI lives on its own branch of [`TripMate-AI`](https://github.com/nishantrv/TripMate-AI):
+>
+> | Branch | Version | What it adds |
+> |---|---|---|
+> | [`v1-langgraph`](https://github.com/nishantrv/TripMate-AI/tree/v1-langgraph) | v1 (this branch) | 4 LangGraph agents with hand-written Python tools |
+> | [`v2-mcp`](https://github.com/nishantrv/TripMate-AI/tree/v2-mcp) | v2 | Tools moved to 3 MCP servers, plus a weather agent |
+> | [`v3-supervisor-hitl`](https://github.com/nishantrv/TripMate-AI/tree/v3-supervisor-hitl) | v3 | Supervisor routing, input guardrail, budget agent and human approval |
 
 ---
 
@@ -84,8 +89,8 @@ LANGSMITH_PROJECT=tripmate-ai
 ## 🚀 Quickstart
 
 ```bash
-git clone https://github.com/nishantrv/Multi-Agent-With-LangGraphs-LangSmith.git
-cd Multi-Agent-With-LangGraphs-LangSmith
+git clone -b v1-langgraph https://github.com/nishantrv/TripMate-AI.git
+cd TripMate-AI
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
