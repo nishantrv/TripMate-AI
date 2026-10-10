@@ -28,7 +28,13 @@ Planning a trip means jumping between flight sites, hotel searches, weather apps
 
 The interesting part is **how the agents reach the outside world**. Instead of hard-coding API clients, every external capability is an **MCP server** loaded through `langchain-mcp-adapters`. You can add, swap or remove a data source in config, without editing agent code.
 
-> 🔁 **This is v2.** [`Multi-Agent-With-LangGraphs-LangSmith`](https://github.com/nishantrv/Multi-Agent-With-LangGraphs-LangSmith) is v1, which uses hand-written Python tools. Comparing the two shows the move from bespoke tool code to the MCP standard.
+> 🔀 **One repo, three versions.** Each version of TripMate AI lives on its own branch of [`TripMate-AI`](https://github.com/nishantrv/TripMate-AI):
+>
+> | Branch | Version | What it adds |
+> |---|---|---|
+> | [`v1-langgraph`](https://github.com/nishantrv/TripMate-AI/tree/v1-langgraph) | v1 | 4 LangGraph agents with hand-written Python tools |
+> | [`v2-mcp`](https://github.com/nishantrv/TripMate-AI/tree/v2-mcp) | v2 (this branch) | Tools moved to 3 MCP servers, plus a weather agent |
+> | [`v3-supervisor-hitl`](https://github.com/nishantrv/TripMate-AI/tree/v3-supervisor-hitl) | v3 | Supervisor routing, input guardrail, budget agent and human approval |
 
 ---
 
@@ -85,8 +91,8 @@ The graph is compiled with LangGraph's **`PostgresSaver`**, so each `thread_id` 
 ## 🚀 Quickstart
 
 ```bash
-git clone https://github.com/nishantrv/MulitAgent-With-MCPs.git
-cd MulitAgent-With-MCPs
+git clone -b v2-mcp https://github.com/nishantrv/TripMate-AI.git
+cd TripMate-AI
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 pip install uv                                         # provides `uvx` for the AviationStack MCP server
